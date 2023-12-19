@@ -46,12 +46,21 @@ export async function activate(context: vscode.ExtensionContext) {
       return otherBranches;
     }
 
-    const parentCommit = (await $`git rev-parse ${commit}^`).toString().trim();
-    if (!parentCommit) {
+    const parentCommit = await getParentCommit(commit);
+    if (parentCommit === undefined) {
       return [];
     }
 
     return findOtherBranches(parentCommit);
+  }
+
+  async function getParentCommit(commit: string) {
+    try {
+      return (await $`git rev-parse ${commit}^`).toString().trim();
+    } catch (error) {
+      console.error(error);
+      return undefined;
+    }
   }
 }
 
