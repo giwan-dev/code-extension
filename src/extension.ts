@@ -1,26 +1,68 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
+import * as vscode from "vscode";
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+  const { $ } = await import("zx");
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "giwan-code-extension" is now active!');
+  if (vscode.workspace.workspaceFolders) {
+    $.cwd = vscode.workspace.workspaceFolders[0].uri.path;
+  } else {
+    vscode.window.showErrorMessage("No workspace folder found.");
+    return;
+  }
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('giwan-code-extension.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from giwan-code-extension!');
-	});
+  let disposable = vscode.commands.registerCommand(
+    "giwan-code-extension.selectBaseBranch",
+    async () => {
+      const commit = (await $`git rev-parse HEAD`).toString().trim();
+      const branches = await findOtherBranches(commit);
 
-	context.subscriptions.push(disposable);
+      const selectedBranch = await pickOneBranch(branches);
+      if (selectedBranch === undefined) {
+        return;
+      }
+
+      vscode.env.clipboard.writeText(selectedBranch);
+      vscode.window.showInformationMessage(`${selectedBranch} 복사됨!`);
+    }
+  );
+
+  context.subscriptions.push(disposable);
+
+  /**
+   * 지정된 커밋을 포함하는 다른 브랜치를 가져옵니다.
+   * 커밋이 어떤 브랜치에도 없는 경우, 커밋의 부모 커밋을 재귀적으로 검색하고 프로세스를 반복합니다.
+   * @param commit 검색할 커밋 해시입니다.
+   * @returns 커밋을 포함하는 브랜치 이름의 배열이거나, 어떤 브랜치에도 커밋이 없는 경우 빈 배열입니다.
+   */
+  async function findOtherBranches(commit: string) {
+    const otherBranches = (await $`git branch --contains ${commit}`)
+      .toString()
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((x) => !!x)
+      .filter((branch) => branch.startsWith("* ") === false);
+
+    if (otherBranches.length > 0) {
+      return otherBranches;
+    }
+
+    const parentCommit = (await $`git rev-parse ${commit}^`).toString().trim();
+    if (!parentCommit) {
+      return [];
+    }
+
+    return findOtherBranches(parentCommit);
+  }
 }
 
-// This method is called when your extension is deactivated
+async function pickOneBranch(branches: string[]): Promise<string | undefined> {
+  if (branches.length === 1) {
+    const [branch] = branches;
+    return branch;
+  }
+
+  const selectedBranch = await vscode.window.showQuickPick(branches);
+  return selectedBranch;
+}
+
 export function deactivate() {}
